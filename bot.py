@@ -223,6 +223,16 @@ async def on_message(message):
     if message.author == bot.user:
         return
         
+    # If the user types '/leave' as a plain text message, handle it as a leave command
+    if message.content.strip().lower() == '/leave':
+        voice_client = discord.utils.get(bot.voice_clients, guild=message.guild)
+        if voice_client and voice_client.is_connected():
+            await voice_client.disconnect()
+            await message.reply("👋 Disconnected from the voice channel!")
+        else:
+            await message.reply("I am not connected to any voice channel.")
+        return
+        
     # If the bot is mentioned, respond to the message
     if bot.user in message.mentions:
         # Clean mention tags from prompt
