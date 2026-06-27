@@ -21,7 +21,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5-coder:7b')
-TTS_URL = os.getenv('TTS_URL', 'http://172.17.0.3:8998/tts')
+TTS_URL = os.getenv('TTS_URL', 'http://localhost:8998/tts')
 
 LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini').lower()
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-lite')
