@@ -62,40 +62,11 @@ docker run --env-file .env nullpointer-bot
 
 ## System Design & Architecture
 
-Here is the system design of the Nullpointer Bot showing the current execution flow and the proposed real-time streaming audio pipeline.
+Here is the system design of the Nullpointer Bot showing the active real-time streaming voice pipeline and the traditional sequential fallback flow.
 
-### 1. Current Architecture (Sequential Flow)
+### 1. Current Streaming Architecture (Real-Time LLM & TTS Streaming Pipeline)
 
-In the current setup, the bot generates the full text response from the LLM before sending it to the Kokoro TTS service. Once the complete audio file is synthesized, it is streamed to the voice channel.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Discord as Discord Server
-    participant Bot as Nullpointer Bot
-    participant LLM as LLM Provider (Gemini/Ollama)
-    participant TTS as Kokoro TTS Service
-    participant Voice as Discord Voice Connection
-
-    User->>Discord: Sends message / command
-    Discord->>Bot: Dispatches event (message / interaction)
-    Bot->>LLM: Requests completion (generate_response)
-    LLM-->>Bot: Returns full text answer
-    Bot->>Discord: Sends text reply message
-    
-    alt Bot or User is in Voice Channel
-        Bot->>Bot: Cleans markdown & formatting
-        Bot->>TTS: POST /tts (full text)
-        TTS-->>Bot: Returns synthesized audio bytes (.wav)
-        Bot->>Voice: Play audio via FFmpegPCMAudio
-        Voice-->>Bot: Playing in voice channel...
-    end
-```
-
-### 2. Proposed Streaming Architecture (Real-Time Audio Sink)
-
-To implement real-time speech synthesis while the LLM is still generating tokens, we can stream chunks from the LLM, accumulate them into sentences, request audio concurrently, and queue them to a sequential audio playback sink.
+This is the primary pipeline used for `/ask`, `!ask`, and bot mentions. The bot streams chunks from the LLM, accumulates them into sentences in real time, requests audio from the Kokoro TTS service concurrently, and queues them to a sequential audio playback sink in the Discord voice channel. This allows voice output to play with minimal latency while the LLM is still generating text.
 
 ```mermaid
 flowchart TD
@@ -149,11 +120,40 @@ sequenceDiagram
     end
 ```
 
+### 2. Traditional Sequential Architecture (Fallback/Speak Command)
+
+This fallback flow is used for the `/speak` and `!speak` commands where text is supplied all at once. The bot generates the full text response from the LLM before sending it to the Kokoro TTS service. Once the complete audio file is synthesized, it is streamed to the voice channel.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Discord as Discord Server
+    participant Bot as Nullpointer Bot
+    participant LLM as LLM Provider (Gemini/Ollama)
+    participant TTS as Kokoro TTS Service
+    participant Voice as Discord Voice Connection
+
+    User->>Discord: Sends message / command
+    Discord->>Bot: Dispatches event (message / interaction)
+    Bot->>LLM: Requests completion (generate_response)
+    LLM-->>Bot: Returns full text answer
+    Bot->>Discord: Sends text reply message
+    
+    alt Bot or User is in Voice Channel
+        Bot->>Bot: Cleans markdown & formatting
+        Bot->>TTS: POST /tts (full text)
+        TTS-->>Bot: Returns synthesized audio bytes (.wav)
+        Bot->>Voice: Play audio via FFmpegPCMAudio
+        Voice-->>Bot: Playing in voice channel...
+    end
+```
+
 ---
 
-### How to Implement the Streaming Pipeline in Python
-To enable the proposed real-time streaming pipeline:
-1. **LLM Client Streaming**: Switch client calls from `generate_response()` to `generate_content_stream()` (Gemini) or setting `stream=True` (OpenAI/Ollama).
-2. **Regex Sentence Splitting**: Use a regex lookbehind matcher (e.g. `(?<!\bMr)(?<!\bDr)(?<=[.!?])\s+`) to capture ends of sentences from the text buffer without splitting prematurely.
-3. **Async HTTP Queue**: Send concurrent requests to the TTS service for completed sentences, saving the audio segments in a thread-safe `asyncio.Queue`.
-4. **Discord Audio Playback Lock/Sink**: Implement a custom playback loop that monitors the Discord `VoiceClient.is_playing()` status and utilizes the `after` callback in `voice_client.play(FFmpegPCMAudio(temp_wav), after=...)` to feed the next audio chunk from the queue seamlessly.
+### Python Streaming Implementation Details
+The real-time streaming pipeline is implemented as follows:
+1. **LLM Client Streaming**: Calls `generate_response_stream()` to yield chunks from the LLM provider (Gemini ESE stream, OpenAI/Ollama HTTP stream) using asynchronous generator iterators.
+2. **Regex Sentence Splitting**: Employs a regex lookbehind matcher (`(?<!\bMr)(?<!\bDr)(?<=[.!?])\s+`) to extract complete sentences from the raw token buffer.
+3. **Async HTTP Queue**: Fetches TTS audio segments concurrently as sentences complete and queues them to a thread-safe `asyncio.Queue`.
+4. **Discord Audio Playback Sink**: Uses a background `playback_worker` task that monitors queue elements and triggers sequential voice client playback (`voice_client.play`) inside the async event loop using `loop.call_soon_threadsafe(playing_done.set)` inside discord.py's internal voice thread callback.
