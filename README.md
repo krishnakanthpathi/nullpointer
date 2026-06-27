@@ -17,15 +17,17 @@ Nullpointer is a multi-LLM and Text-to-Speech (TTS) Discord bot. It supports int
 ## Commands
 
 ### Prefix Commands
-- `!ask [question]`: Ask the LLM a question (remembers context, attach images to analyze).
+- `!ask [question]`: Ask the LLM a question (remembers context, attach images to analyze). **Automatically joins and speaks the answer if you are in a voice channel.**
 - `!speak [voice] [text]`: Speak text in a voice channel or generate a WAV file.
+- `!leave`: Disconnect the bot from the voice channel.
 - `!clear`: Clear conversation history for the current channel.
 - `!provider [name]`: View or set the current channel's LLM provider.
 - `!model [name]`: View or set the model for the current channel.
 
 ### Slash Commands
-- `/ask [question] [attachment]`: Interactive command to ask questions.
+- `/ask [question] [attachment]`: Interactive command to ask questions. **Automatically joins and speaks the answer if you are in a voice channel.**
 - `/speak [text] [voice] [speed]`: Generate voice audio with custom options.
+- `/leave`: Disconnect the bot from the voice channel (also supports typing `/leave` as a plain text chat message).
 - `/clear`: Clear conversation history.
 - `/provider [name]`: Set the LLM provider.
 - `/model [model_name]`: Set the model.
