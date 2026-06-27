@@ -85,25 +85,52 @@ async def handle_llm_stream(ctx_or_interaction, question, attachment=None):
     # 3. Stream data structures
     user_content = await llm.build_user_content(question, attachment)
     full_text = ""
+    current_segment_text = ""
     last_edit_time = time.time()
     chunk_queue = asyncio.Queue()
     
     async def llm_stream_feeder():
-        nonlocal full_text, last_edit_time
+        nonlocal full_text, current_segment_text, last_edit_time, msg
         try:
             async for chunk in llm.llm_manager.generate_response_stream(channel_id, user_content):
                 full_text += chunk
+                current_segment_text += chunk
                 await chunk_queue.put(chunk)
                 
-                # Update text periodically
-                current_time = time.time()
-                if current_time - last_edit_time > 1.5:
-                    display_text = full_text[:1990] + "..." if len(full_text) > 1990 else full_text
+                # Check if current segment is close to the 2000 character limit
+                if len(current_segment_text) >= 1900:
+                    # Try to split at a newline or space to avoid cutting off words/code blocks
+                    split_idx = current_segment_text.rfind('\n', 1500, 1900)
+                    if split_idx == -1:
+                        split_idx = current_segment_text.rfind(' ', 1500, 1900)
+                    if split_idx == -1:
+                        split_idx = 1900
+                    
+                    text_to_send = current_segment_text[:split_idx]
+                    current_segment_text = current_segment_text[split_idx:]
+                    
+                    # Update current message
                     if is_interaction:
-                        await ctx_or_interaction.followup.edit_message(msg.id, content=display_text)
+                        await ctx_or_interaction.followup.edit_message(msg.id, content=text_to_send)
                     else:
-                        await msg.edit(content=display_text)
-                    last_edit_time = current_time
+                        await msg.edit(content=text_to_send)
+                    
+                    # Start a new message
+                    if is_interaction:
+                        msg = await ctx_or_interaction.followup.send("⏳ *Thinking...*")
+                    else:
+                        msg = await ctx_or_interaction.send("⏳ *Thinking...*")
+                    
+                    last_edit_time = time.time()
+                else:
+                    # Update text periodically
+                    current_time = time.time()
+                    if current_time - last_edit_time > 1.5:
+                        if is_interaction:
+                            await ctx_or_interaction.followup.edit_message(msg.id, content=current_segment_text)
+                        else:
+                            await msg.edit(content=current_segment_text)
+                        last_edit_time = current_time
         except Exception as e:
             logger.error(f"Error in LLM stream feeder: {e}")
             error_msg = f"Sorry, I encountered an error: {str(e)[:1900]}"
@@ -144,11 +171,19 @@ async def handle_llm_stream(ctx_or_interaction, question, attachment=None):
     await asyncio.gather(llm_stream_feeder(), sentence_processor())
     
     # Final message edit
-    if full_text.strip():
+    if current_segment_text.strip():
         if is_interaction:
-            await ctx_or_interaction.followup.edit_message(msg.id, content=full_text[:2000])
+            await ctx_or_interaction.followup.edit_message(msg.id, content=current_segment_text[:2000])
         else:
-            await msg.edit(content=full_text[:2000])
+            await msg.edit(content=current_segment_text[:2000])
+    else:
+        try:
+            if is_interaction:
+                await ctx_or_interaction.followup.delete_message(msg.id)
+            else:
+                await msg.delete()
+        except Exception as delete_err:
+            logger.warning(f"Could not delete empty final message: {delete_err}")
 
 # --- prefix commands ---
 
