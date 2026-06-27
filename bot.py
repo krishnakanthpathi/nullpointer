@@ -45,6 +45,17 @@ async def ask(ctx, *, question: str = ""):
                     await ctx.send(chunk)
             else:
                 await ctx.send(answer)
+                
+            # If the bot is connected to a voice channel in this guild, read the response aloud
+            voice_client = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+            if voice_client and voice_client.is_connected():
+                import re
+                clean_text = re.sub(r'```.*?```', '[code block]', answer, flags=re.DOTALL)
+                clean_text = clean_text.replace('*', '').replace('_', '').replace('#', '').strip()
+                if clean_text:
+                    speech_text = clean_text[:500] + ("..." if len(clean_text) > 500 else "")
+                    audio_data = await tts.generate_tts(speech_text)
+                    await tts.play_tts_in_voice(bot, ctx, audio_data, suppress_message=True)
         except Exception as e:
             await ctx.send(f"Sorry, I encountered an error: {str(e)[:1900]}")
 
@@ -103,6 +114,15 @@ async def model_prefix(ctx, model_name: str = None):
     provider = llm.llm_manager.get_provider(ctx.channel.id)
     await ctx.send(f"✅ Model for this channel (provider: {provider}) set to **{model_name}**.")
 
+@bot.command(name="leave", help="Disconnect the bot from the voice channel.")
+async def leave(ctx):
+    voice_client = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+    if voice_client and voice_client.is_connected():
+        await voice_client.disconnect()
+        await ctx.send("👋 Disconnected from the voice channel!")
+    else:
+        await ctx.send("I am not connected to any voice channel.")
+
 # --- slash commands ---
 
 @bot.tree.command(name="ask", description="Ask the bot a question (remembers context, accepts image attachment).")
@@ -120,6 +140,17 @@ async def ask_slash(interaction: discord.Interaction, question: str, attachment:
                 await interaction.channel.send(chunk)
         else:
             await interaction.followup.send(answer)
+            
+        # If the bot is connected to a voice channel in this guild, read the response aloud
+        voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+        if voice_client and voice_client.is_connected():
+            import re
+            clean_text = re.sub(r'```.*?```', '[code block]', answer, flags=re.DOTALL)
+            clean_text = clean_text.replace('*', '').replace('_', '').replace('#', '').strip()
+            if clean_text:
+                speech_text = clean_text[:500] + ("..." if len(clean_text) > 500 else "")
+                audio_data = await tts.generate_tts(speech_text)
+                await tts.play_tts_in_voice(bot, interaction, audio_data, suppress_message=True)
     except Exception as e:
         await interaction.followup.send(f"Sorry, I encountered an error: {str(e)[:1900]}")
 
@@ -175,6 +206,15 @@ async def model_slash(interaction: discord.Interaction, model_name: str):
     provider = llm.llm_manager.get_provider(interaction.channel_id)
     await interaction.response.send_message(f"✅ Model for this channel (provider: {provider}) set to **{model_name}**.")
 
+@bot.tree.command(name="leave", description="Disconnect the bot from the voice channel.")
+async def leave_slash(interaction: discord.Interaction):
+    voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
+    if voice_client and voice_client.is_connected():
+        await voice_client.disconnect()
+        await interaction.response.send_message("👋 Disconnected from the voice channel!")
+    else:
+        await interaction.response.send_message("I am not connected to any voice channel.", ephemeral=True)
+
 # --- event listeners ---
 
 @bot.event
@@ -209,6 +249,18 @@ async def on_message(message):
                             await message.reply(chunk)
                     else:
                         await message.reply(answer)
+                        
+                    # If the bot is connected to a voice channel in this guild, read the response aloud
+                    voice_client = discord.utils.get(bot.voice_clients, guild=message.guild)
+                    if voice_client and voice_client.is_connected():
+                        import re
+                        clean_text = re.sub(r'```.*?```', '[code block]', answer, flags=re.DOTALL)
+                        clean_text = clean_text.replace('*', '').replace('_', '').replace('#', '').strip()
+                        if clean_text:
+                            speech_text = clean_text[:500] + ("..." if len(clean_text) > 500 else "")
+                            audio_data = await tts.generate_tts(speech_text)
+                            ctx = await bot.get_context(message)
+                            await tts.play_tts_in_voice(bot, ctx, audio_data, suppress_message=True)
                 except Exception as e:
                     error_msg = str(e)[:1900]
                     await message.reply(f"Sorry, I encountered an error: {error_msg}")

@@ -28,15 +28,24 @@ async def generate_tts(text: str, voice: str = "af_heart", speed: float = 1.0) -
         except httpx.ConnectError:
             raise ConnectionError(f"Failed to connect to Kokoro TTS service at {config.TTS_URL}. Is it running?")
 
-async def play_tts_in_voice(bot, ctx_or_interaction, audio_data: bytes):
+async def play_tts_in_voice(bot, ctx_or_interaction, audio_data: bytes, suppress_message: bool = False):
     """Plays audio in the author's voice channel or uploads it as a WAV attachment if not possible."""
     is_interaction = isinstance(ctx_or_interaction, discord.Interaction)
     author = ctx_or_interaction.user if is_interaction else ctx_or_interaction.author
     guild = ctx_or_interaction.guild if is_interaction else ctx_or_interaction.guild
     
-    voice_channel = author.voice.channel if (author.voice and author.voice.channel) else None
+    voice_client = discord.utils.get(bot.voice_clients, guild=guild)
+    
+    # Use bot's current voice channel if already connected, else fall back to author's channel
+    if voice_client and voice_client.is_connected():
+        voice_channel = voice_client.channel
+    else:
+        voice_channel = author.voice.channel if (author.voice and author.voice.channel) else None
     
     if not voice_channel:
+        if suppress_message:
+            logger.info("No voice channel found and suppress_message is True. Skipping playback/attachment.")
+            return
         file = discord.File(io.BytesIO(audio_data), filename="speech.wav")
         msg = "Here is the spoken audio! (Join a voice channel to have me speak it live)"
         if is_interaction:
@@ -46,12 +55,10 @@ async def play_tts_in_voice(bot, ctx_or_interaction, audio_data: bytes):
         return
         
     try:
-        voice_client = discord.utils.get(bot.voice_clients, guild=guild)
-        if voice_client and voice_client.is_connected():
-            if voice_client.channel != voice_channel:
-                await voice_client.move_to(voice_channel)
-        else:
+        if not voice_client or not voice_client.is_connected():
             voice_client = await voice_channel.connect()
+        elif voice_client.channel != voice_channel:
+            await voice_client.move_to(voice_channel)
             
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
             temp_wav.write(audio_data)
@@ -70,17 +77,19 @@ async def play_tts_in_voice(bot, ctx_or_interaction, audio_data: bytes):
                 
         voice_client.play(discord.FFmpegPCMAudio(temp_path), after=after_playing)
         
-        msg = f"🗣️ Playing audio in **{voice_channel.name}**!"
-        if is_interaction:
-            await ctx_or_interaction.followup.send(content=msg)
-        else:
-            await ctx_or_interaction.send(content=msg)
+        if not suppress_message:
+            msg = f"🗣️ Playing audio in **{voice_channel.name}**!"
+            if is_interaction:
+                await ctx_or_interaction.followup.send(content=msg)
+            else:
+                await ctx_or_interaction.send(content=msg)
             
     except Exception as e:
-        logger.error(f"Failed to play in voice: {e}. Falling back to attachment.")
-        file = discord.File(io.BytesIO(audio_data), filename="speech.wav")
-        msg = f"Failed to play in voice ({e}). Sending audio file instead:"
-        if is_interaction:
-            await ctx_or_interaction.followup.send(content=msg, file=file)
-        else:
-            await ctx_or_interaction.send(content=msg, file=file)
+        logger.error(f"Failed to play in voice: {e}")
+        if not suppress_message:
+            file = discord.File(io.BytesIO(audio_data), filename="speech.wav")
+            msg = f"Failed to play in voice ({e}). Sending audio file instead:"
+            if is_interaction:
+                await ctx_or_interaction.followup.send(content=msg, file=file)
+            else:
+                await ctx_or_interaction.send(content=msg, file=file)
