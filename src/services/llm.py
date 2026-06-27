@@ -102,6 +102,39 @@ class LLMManager:
             if history and history[-1] == user_content:
                 history.pop()
             raise e
+
+    async def generate_response_stream(self, channel_id: int, user_content: dict):
+        provider = self.get_provider(channel_id)
+        model = self.get_model(channel_id, provider)
+        
+        logger.info(f"Streaming response for channel {channel_id} using {provider} ({model})")
+        
+        # Get history
+        history = conversation_histories.setdefault(channel_id, [])
+        history.append(user_content)
+        
+        # Keep history within limits
+        if len(history) > config.MAX_HISTORY:
+            prune_count = len(history) - config.MAX_HISTORY
+            history[:] = history[prune_count:]
+            
+        try:
+            if provider == 'gemini':
+                async for chunk in self._generate_gemini_stream(history, model):
+                    yield chunk
+            elif provider == 'openai':
+                async for chunk in self._generate_openai_stream(history, model):
+                    yield chunk
+            elif provider == 'ollama':
+                async for chunk in self._generate_ollama_stream(history, model):
+                    yield chunk
+            else:
+                raise ValueError(f"Unknown LLM provider: {provider}")
+        except Exception as e:
+            # Rollback history on failure
+            if history and history[-1] == user_content:
+                history.pop()
+            raise e
             
     async def _generate_gemini(self, history: list, model: str) -> str:
         if not self.gemini_client:
@@ -138,6 +171,46 @@ class LLMManager:
             "text": model_text
         })
         return model_text
+
+    async def _generate_gemini_stream(self, history: list, model: str):
+        if not self.gemini_client:
+            raise ValueError("Gemini client is not configured. Please set GEMINI_API_KEY in the .env file.")
+            
+        contents = []
+        for msg in history:
+            parts = []
+            if msg.get("text"):
+                parts.append(gemini_types.Part.from_text(text=msg["text"]))
+            if msg.get("image_bytes"):
+                parts.append(
+                    gemini_types.Part.from_bytes(
+                        data=msg["image_bytes"],
+                        mime_type=msg["mime_type"]
+                    )
+                )
+            contents.append(gemini_types.Content(role=msg["role"], parts=parts))
+            
+        config_args = gemini_types.GenerateContentConfig(
+            system_instruction="You are a helpful coding assistant discord bot named null-pointer."
+        )
+        
+        response_stream = await asyncio.to_thread(
+            self.gemini_client.models.generate_content_stream,
+            model=model,
+            contents=contents,
+            config=config_args
+        )
+        
+        full_text = ""
+        for chunk in response_stream:
+            chunk_text = chunk.text or ""
+            full_text += chunk_text
+            yield chunk_text
+            
+        history.append({
+            "role": "model",
+            "text": full_text
+        })
 
     async def _generate_openai(self, history: list, model: str) -> str:
         if not self.openai_client:
@@ -177,6 +250,49 @@ class LLMManager:
         })
         return model_text
 
+    async def _generate_openai_stream(self, history: list, model: str):
+        if not self.openai_client:
+            raise ValueError("OpenAI client is not configured. Please set OPENAI_API_KEY in the .env file.")
+            
+        messages = [
+            {"role": "system", "content": "You are a helpful coding assistant discord bot named null-pointer."}
+        ]
+        
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "assistant"
+            
+            if msg.get("image_bytes"):
+                base64_image = base64.b64encode(msg["image_bytes"]).decode('utf-8')
+                content_list = [
+                    {"type": "text", "text": msg.get("text", "")},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{msg['mime_type']};base64,{base64_image}"
+                        }
+                    }
+                ]
+                messages.append({"role": role, "content": content_list})
+            else:
+                messages.append({"role": role, "content": msg.get("text", "")})
+                
+        response = await self.openai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True
+        )
+        
+        full_text = ""
+        async for chunk in response:
+            chunk_text = chunk.choices[0].delta.content or ""
+            full_text += chunk_text
+            yield chunk_text
+            
+        history.append({
+            "role": "model",
+            "text": full_text
+        })
+
     async def _generate_ollama(self, history: list, model: str) -> str:
         messages = [
             {"role": "system", "content": "You are a helpful coding assistant discord bot named null-pointer."}
@@ -214,6 +330,48 @@ class LLMManager:
             "text": model_text
         })
         return model_text
+
+    async def _generate_ollama_stream(self, history: list, model: str):
+        messages = [
+            {"role": "system", "content": "You are a helpful coding assistant discord bot named null-pointer."}
+        ]
+        
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "assistant"
+            
+            if msg.get("image_bytes"):
+                base64_image = base64.b64encode(msg["image_bytes"]).decode('utf-8')
+                content_list = [
+                    {"type": "text", "text": msg.get("text", "")},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{msg['mime_type']};base64,{base64_image}"
+                        }
+                    }
+                ]
+                messages.append({"role": role, "content": content_list})
+            else:
+                messages.append({"role": role, "content": msg.get("text", "")})
+                
+        try:
+            response = await self.ollama_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=True
+            )
+            full_text = ""
+            async for chunk in response:
+                chunk_text = chunk.choices[0].delta.content or ""
+                full_text += chunk_text
+                yield chunk_text
+                
+            history.append({
+                "role": "model",
+                "text": full_text
+            })
+        except httpx.ConnectError:
+            raise ConnectionError(f"Failed to connect to local Ollama service at {self.ollama_host}. Is it running?")
 
 llm_manager = LLMManager()
 
