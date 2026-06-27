@@ -1,0 +1,6 @@
+discord.py
+google-genai
+python-dotenv
+PyNacl
+httpx
+openai
