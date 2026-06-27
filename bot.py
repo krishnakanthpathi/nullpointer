@@ -17,12 +17,21 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user.name} ({bot.user.id})')
-    logger.info('Syncing slash commands...')
+    logger.info('Syncing slash commands globally...')
     try:
         synced = await bot.tree.sync()
-        logger.info(f"Successfully synced {len(synced)} command(s)")
+        logger.info(f"Successfully synced {len(synced)} global command(s)")
     except Exception as e:
-        logger.error(f"Failed to sync slash commands: {e}")
+        logger.error(f"Failed to sync global slash commands: {e}")
+        
+    logger.info('Syncing slash commands to active guilds instantly...')
+    for guild in bot.guilds:
+        try:
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
+            logger.info(f"Successfully synced command tree to guild: {guild.name} ({guild.id})")
+        except Exception as e:
+            logger.error(f"Failed to sync command tree to guild {guild.name}: {e}")
     logger.info('Bot is ready!')
 
 # --- prefix commands ---
@@ -46,9 +55,11 @@ async def ask(ctx, *, question: str = ""):
             else:
                 await ctx.send(answer)
                 
-            # If the bot is connected to a voice channel in this guild, read the response aloud
+            # If the user is connected to a voice channel, or the bot is already in one, speak the response aloud
+            author = ctx.author
+            voice_channel = author.voice.channel if (author.voice and author.voice.channel) else None
             voice_client = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-            if voice_client and voice_client.is_connected():
+            if voice_channel or (voice_client and voice_client.is_connected()):
                 import re
                 clean_text = re.sub(r'```.*?```', '[code block]', answer, flags=re.DOTALL)
                 clean_text = clean_text.replace('*', '').replace('_', '').replace('#', '').strip()
@@ -141,9 +152,11 @@ async def ask_slash(interaction: discord.Interaction, question: str, attachment:
         else:
             await interaction.followup.send(answer)
             
-        # If the bot is connected to a voice channel in this guild, read the response aloud
+        # If the user is connected to a voice channel, or the bot is already in one, speak the response aloud
+        author = interaction.user
+        voice_channel = author.voice.channel if (author.voice and author.voice.channel) else None
         voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-        if voice_client and voice_client.is_connected():
+        if voice_channel or (voice_client and voice_client.is_connected()):
             import re
             clean_text = re.sub(r'```.*?```', '[code block]', answer, flags=re.DOTALL)
             clean_text = clean_text.replace('*', '').replace('_', '').replace('#', '').strip()
@@ -260,9 +273,11 @@ async def on_message(message):
                     else:
                         await message.reply(answer)
                         
-                    # If the bot is connected to a voice channel in this guild, read the response aloud
+                    # If the user is connected to a voice channel, or the bot is already in one, speak the response aloud
+                    author = message.author
+                    voice_channel = author.voice.channel if (author.voice and author.voice.channel) else None
                     voice_client = discord.utils.get(bot.voice_clients, guild=message.guild)
-                    if voice_client and voice_client.is_connected():
+                    if voice_channel or (voice_client and voice_client.is_connected()):
                         import re
                         clean_text = re.sub(r'```.*?```', '[code block]', answer, flags=re.DOTALL)
                         clean_text = clean_text.replace('*', '').replace('_', '').replace('#', '').strip()
