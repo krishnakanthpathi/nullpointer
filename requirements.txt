@@ -4,3 +4,4 @@ python-dotenv
 PyNacl
 httpx
 openai
+davey
