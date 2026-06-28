@@ -205,7 +205,11 @@ async def speak(ctx, *, args: str = ""):
     voice = "af_heart"
     text = args
     
-    supported_voices = {"af_heart", "af_bella", "bf_emma", "bf_clara", "am_adam", "am_michael", "pm_alex"}
+    supported_voices = {
+        "af_heart", "af_bella", "bf_emma", "bf_clara", "am_adam", "am_michael",
+        "pm_alex", "ef_dora", "ff_siwis", "hf_alpha", "hf_beta", "if_sara",
+        "jf_alpha", "zf_xiaoxiao"
+    }
     if parts[0] in supported_voices:
         voice = parts[0]
         if len(parts) > 1:
@@ -281,7 +285,14 @@ async def ask_slash(interaction: discord.Interaction, question: str, attachment:
     app_commands.Choice(name="bf_clara (UK Female)", value="bf_clara"),
     app_commands.Choice(name="am_adam (US Male)", value="am_adam"),
     app_commands.Choice(name="am_michael (US Male)", value="am_michael"),
-    app_commands.Choice(name="pm_alex (US Male)", value="pm_alex"),
+    app_commands.Choice(name="pm_alex (Brazilian Portuguese Male)", value="pm_alex"),
+    app_commands.Choice(name="ef_dora (Spanish Female)", value="ef_dora"),
+    app_commands.Choice(name="ff_siwis (French Female)", value="ff_siwis"),
+    app_commands.Choice(name="hf_alpha (Hindi Female)", value="hf_alpha"),
+    app_commands.Choice(name="hf_beta (Hindi Female)", value="hf_beta"),
+    app_commands.Choice(name="if_sara (Italian Female)", value="if_sara"),
+    app_commands.Choice(name="jf_alpha (Japanese Female)", value="jf_alpha"),
+    app_commands.Choice(name="zf_xiaoxiao (Mandarin Chinese Female)", value="zf_xiaoxiao"),
 ])
 async def speak_slash(
     interaction: discord.Interaction,

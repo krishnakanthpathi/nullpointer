@@ -12,13 +12,14 @@ async def generate_tts(text: str, voice: str = "af_heart", speed: float = 1.0) -
     logger.info(f"Generating TTS using voice '{voice}', speed {speed} for text: '{text[:30]}...'")
     async with httpx.AsyncClient() as httpx_client:
         try:
+            lang_code = voice[0] if (voice and len(voice) > 0) else "a"
             response = await httpx_client.post(
                 config.TTS_URL,
                 json={
                     "text": text,
                     "voice": voice,
                     "speed": speed,
-                    "lang_code": "a"
+                    "lang_code": lang_code
                 },
                 timeout=30.0
             )
