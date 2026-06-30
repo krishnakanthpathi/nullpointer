@@ -115,7 +115,9 @@ class DiscordView:
 
     def get_author_voice_channel(self):
         """Returns the voice channel of the command author, if any."""
-        return self.author.voice.channel if (self.author.voice and self.author.voice.channel) else None
+        if hasattr(self.author, 'voice') and self.author.voice and self.author.voice.channel:
+            return self.author.voice.channel
+        return None
 
     def get_connected_voice_client(self):
         """Returns the bot's voice client for this guild, if any."""

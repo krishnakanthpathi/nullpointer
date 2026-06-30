@@ -33,6 +33,14 @@ class BotController:
                 logger.info(f"Successfully synced command tree to guild: {guild.name} ({guild.id})")
             except Exception as e:
                 logger.error(f"Failed to sync command tree to guild {guild.name}: {e}")
+        try:
+            await self.bot.change_presence(
+                status=discord.Status.online,
+                activity=discord.Activity(type=discord.ActivityType.listening, name="!ask | /ask")
+            )
+            logger.info("Successfully set bot status to online with activity.")
+        except Exception as e:
+            logger.error(f"Failed to set bot presence: {e}")
         logger.info('Bot is ready!')
 
     async def _stream_sentences(self, chunk_generator):
