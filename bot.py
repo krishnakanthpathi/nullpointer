@@ -20,7 +20,7 @@ async def on_ready():
 
 # --- prefix commands ---
 
-@bot.command(name='ask', help='Ask the bot a question (remembers context, attach image to analyze).')
+@bot.command(name='ask', help='Ask the bot a question (remembers context, attach image to analyze). Usage: !ask [provider] [question] (provider is optional, choose from: gemini, openai, ollama)')
 async def ask(ctx, *, question: str = ""):
     attachment = ctx.message.attachments[0] if ctx.message.attachments else None
     await controller.handle_ask(ctx, question, attachment)
@@ -48,10 +48,25 @@ async def leave(ctx):
 # --- slash commands ---
 
 @bot.tree.command(name="ask", description="Ask the bot a question (remembers context, accepts image attachment).")
-@app_commands.describe(question="The question to ask the bot", attachment="An optional image to analyze")
-async def ask_slash(interaction: discord.Interaction, question: str, attachment: discord.Attachment = None):
+@app_commands.describe(
+    question="The question to ask the bot",
+    attachment="An optional image to analyze",
+    provider="The LLM provider to use for this request (gemini, openai, ollama)"
+)
+@app_commands.choices(provider=[
+    app_commands.Choice(name="Gemini (Google)", value="gemini"),
+    app_commands.Choice(name="OpenAI", value="openai"),
+    app_commands.Choice(name="Ollama (Local)", value="ollama")
+])
+async def ask_slash(
+    interaction: discord.Interaction,
+    question: str,
+    attachment: discord.Attachment = None,
+    provider: app_commands.Choice[str] = None
+):
     await interaction.response.defer()
-    await controller.handle_ask(interaction, question, attachment)
+    provider_val = provider.value if provider else None
+    await controller.handle_ask(interaction, question, attachment, provider=provider_val)
 
 @bot.tree.command(name="speak", description="Generate speech audio using local Kokoro TTS.")
 @app_commands.describe(

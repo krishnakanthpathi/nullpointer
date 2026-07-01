@@ -73,8 +73,9 @@ class LLMManager:
     def clear_history(self, channel_id: int):
         conversation_histories.pop(channel_id, None)
         
-    async def generate_response(self, channel_id: int, user_content: dict) -> str:
-        provider = self.get_provider(channel_id)
+    async def generate_response(self, channel_id: int, user_content: dict, provider: str = None) -> str:
+        if not provider:
+            provider = self.get_provider(channel_id)
         model = self.get_model(channel_id, provider)
         
         logger.info(f"Generating response for channel {channel_id} using {provider} ({model})")
@@ -103,8 +104,9 @@ class LLMManager:
                 history.pop()
             raise e
 
-    async def generate_response_stream(self, channel_id: int, user_content: dict):
-        provider = self.get_provider(channel_id)
+    async def generate_response_stream(self, channel_id: int, user_content: dict, provider: str = None):
+        if not provider:
+            provider = self.get_provider(channel_id)
         model = self.get_model(channel_id, provider)
         
         logger.info(f"Streaming response for channel {channel_id} using {provider} ({model})")

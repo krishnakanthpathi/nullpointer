@@ -63,9 +63,26 @@ class BotController:
         if buffer.strip():
             yield buffer.strip()
 
-    async def handle_ask(self, ctx_or_interaction, question: str, attachment: discord.Attachment = None):
+    async def handle_ask(self, ctx_or_interaction, question: str, attachment: discord.Attachment = None, provider: str = None):
         """Handles streaming LLM response, updating message text and streaming TTS concurrently."""
         view = DiscordView(self.bot, ctx_or_interaction)
+        
+        # Parse provider from question if not explicitly provided (e.g., in prefix commands or mentions)
+        if not provider and question:
+            # Check for --provider <name> or -p <name> at the start of the question
+            match = re.match(r'^(?:--provider|-p)\s+(\w+)\s*(.*)$', question, re.IGNORECASE)
+            if match:
+                parsed_provider = match.group(1).lower().strip()
+                if parsed_provider in {"gemini", "openai", "ollama"}:
+                    provider = parsed_provider
+                    question = match.group(2)
+            else:
+                # Check if the first word is a provider name
+                parts = question.split(maxsplit=1)
+                first_word = parts[0].lower().strip()
+                if first_word in {"gemini", "openai", "ollama"}:
+                    provider = first_word
+                    question = parts[1] if len(parts) > 1 else ""
         
         # 1. Send placeholder message
         await view.send_placeholder()
@@ -88,7 +105,7 @@ class BotController:
         
         async def llm_stream_feeder():
             try:
-                async for chunk in llm_manager.generate_response_stream(view.channel_id, user_content):
+                async for chunk in llm_manager.generate_response_stream(view.channel_id, user_content, provider=provider):
                     await view.update_stream_text(chunk)
                     await chunk_queue.put(chunk)
             except Exception as e:
